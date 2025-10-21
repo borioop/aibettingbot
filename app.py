@@ -393,6 +393,7 @@ def process_fixture(fixture):
 def build_cache_for_date(date_str):
     """Build cache for one date"""
     try:
+        print(f"🔨 Building cache: {date_str}")
         app.logger.info(f"🔨 Building cache: {date_str}")
         
         # Update status
@@ -400,12 +401,17 @@ def build_cache_for_date(date_str):
             cache_status[date_str] = {'status': 'building', 'progress': 0, 'total': 0}
 
         # Get all fixtures
+        print(f"Fetching fixtures for {date_str}...")
         all_fixtures = get_fixtures_by_date(date_str)
+        
         if not all_fixtures:
+            print(f"⚠️ No fixtures found for {date_str}")
             with cache_lock:
                 cache_status[date_str] = {'status': 'empty', 'progress': 0, 'total': 0}
                 master_cache[date_str] = {'upcoming': [], 'finished': [], 'ready': True}
             return
+
+        print(f"✅ Found {len(all_fixtures)} fixtures for {date_str}")
 
         total = len(all_fixtures)
         with cache_lock:
@@ -428,7 +434,9 @@ def build_cache_for_date(date_str):
                 cache_status[date_str]['progress'] = processed
 
             if processed % max(1, total // 5) == 0:
-                app.logger.info(f"  ⏳ {date_str}: {processed}/{total} ({int(processed/total*100)}%)")
+                progress_pct = int(processed/total*100)
+                print(f"  ⏳ {date_str}: {processed}/{total} ({progress_pct}%)")
+                app.logger.info(f"  ⏳ {date_str}: {processed}/{total} ({progress_pct}%)")
 
             result = future.result()
             if result:
@@ -454,9 +462,11 @@ def build_cache_for_date(date_str):
                 'finished_count': len(finished)
             }
 
+        print(f"✅ {date_str}: {len(upcoming)} upcoming, {len(finished)} finished")
         app.logger.info(f"✅ {date_str}: {len(upcoming)} upcoming, {len(finished)} finished")
 
     except Exception as e:
+        print(f"❌ Error building cache for {date_str}: {e}")
         app.logger.error(f"Error building cache for {date_str}: {e}")
         with cache_lock:
             cache_status[date_str] = {'status': 'error', 'error': str(e)}

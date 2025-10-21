@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ data.team.name }} - Team Overview</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="/static/styles.css" rel="stylesheet">
+  <style>
+    .team-page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 70px 12px 40px;
+    }
+
+    /* Team Header */
+    .team-header-card {
+      background: linear-gradient(135deg, #0b74ff, #0ea5e9);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 24px rgba(11, 116, 255, 0.2);
+      color: #fff;
+    }
+
+    .team-header-content {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .team-logo-large {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
+      background: rgba(255, 255, 255, 0.15);
+      padding: 12px;
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+    }
+
+    .team-info {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .team-name-large {
+      font-size: 28px;
+      font-weight: 900;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .team-meta-info {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 14px;
+      opacity: 0.95;
+    }
+
+    .team-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Filters Section */
+    .filters-section {
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 12px rgba(15,23,42,0.06);
+    }
+
+    .filters-title {
+      font-weight: 700;
+      color: #1f2937;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    .filters-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .filter-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #64748b;
+    }
+
+    .filter-select {
+      padding: 8px 12px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      color: #1f2937;
+      background: #fff;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-width: 150px;
+    }
+
+    .filter-select:hover {
+      border-color: #0b74ff;
+    }
+
+    .filter-select:focus {
+      outline: none;
+      border-color: #0b74ff;
+      box-shadow: 0 0 0 3px rgba(11, 116, 255, 0.1);
+    }
+
+    /* Matches Section */
+    .matches-section {
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 12px rgba(15,23,42,0.06);
+    }
+
+    .matches-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 16px 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: #64748b;
+    }
+
+    .matches-divider::before,
+    .matches-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+    }
+
+    .team-match-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      background: #f8fafc;
+      transition: all 0.2s;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .team-match-item:hover {
+      background: #eef2ff;
+      transform: translateX(4px);
+    }
+
+    .match-date-col {
+      min-width: 90px;
+      font-size: 12px;
+      color: #64748b;
+      font-weight: 600;
+    }
+
+    .match-league-badge {
+      font-size: 10px;
+      background: #e2e8f0;
+      color: #475569;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      margin-top: 4px;
+      display: inline-block;
+    }
+
+    .match-teams-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .match-team-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .match-team-row.highlight {
+      font-weight: 700;
+      color: #0b74ff;
+    }
+
+    .match-team-logo-small {
+      width: 20px;
+      height: 20px;
+      object-fit: contain;
+    }
+
+    .match-score-col {
+      font-size: 18px;
+      font-weight: 900;
+      min-width: 40px;
+      text-align: center;
+    }
+
+    .match-score-col.finished {
+      color: #1f2937;
+    }
+
+    .match-score-col.live {
+      color: #ef4444;
+    }
+
+    .match-status-badge {
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      text-align: center;
+      min-width: 60px;
+    }
+
+    .match-status-badge.upcoming {
+      background: #dbeafe;
+      color: #0b74ff;
+    }
+
+    .match-status-badge.live {
+      background: #ef4444;
+      color: #fff;
+      animation: pulse 1.5s infinite;
+    }
+
+    .show-more-btn {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(90deg, #0b74ff, #0ea5e9);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 8px;
+    }
+
+    .show-more-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(11, 116, 255, 0.3);
+    }
+
+    .show-more-btn:active {
+      transform: translateY(0);
+    }
+
+    .hidden-matches {
+      display: none;
+    }
+
+    .hidden-matches.visible {
+      display: block;
+    }
+
+    /* Standings Section */
+    .standings-section {
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 12px rgba(15,23,42,0.06);
+    }
+
+    .no-data {
+      text-align: center;
+      padding: 40px;
+      color: #94a3b8;
+      font-size: 15px;
+    }
+
+    .loading-spinner {
+      text-align: center;
+      padding: 40px;
+      color: #64748b;
+      font-size: 16px;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .team-name-large {
+        font-size: 22px;
+      }
+
+      .team-logo-large {
+        width: 60px;
+        height: 60px;
+      }
+
+      .match-date-col {
+        min-width: 80px;
+        font-size: 11px;
+      }
+
+      .match-score-col {
+        font-size: 16px;
+        min-width: 35px;
+      }
+
+      .filter-select {
+        min-width: 120px;
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="sticky-banner">
+    <div class="banner-inner">
+      <img src="/static/logo.png" alt="AI Betting Bot" class="banner-logo" onerror="this.style.display='none'">
+      <div class="banner-text">Powered by AI Betting Bot</div>
+    </div>
+  </div>
+
+  <div class="team-page">
+    <!-- Team Header -->
+    <div class="team-header-card">
+      <div class="team-header-content">
+        <img src="{{ data.team.logo }}" alt="{{ data.team.name }}" class="team-logo-large" onerror="this.style.display='none'">
+        <div class="team-info">
+          <h1 class="team-name-large">{{ data.team.name }}</h1>
+          <div class="team-meta-info">
+            {% if data.team.country %}
+            <div class="team-meta-item">
+              <span>🌍</span>
+              <span>{{ data.team.country }}</span>
+            </div>
+            {% endif %}
+            {% if data.team.founded %}
+            <div class="team-meta-item">
+              <span>📅</span>
+              <span>Founded {{ data.team.founded }}</span>
+            </div>
+            {% endif %}
+            {% if data.team.venue_name %}
+            <div class="team-meta-item">
+              <span>🏟️</span>
+              <span>{{ data.team.venue_name }}</span>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Matches Section -->
+    <div class="matches-section">
+      <h2 class="section-title blue">📅 Matches</h2>
+      
+      {% if data.upcoming_matches or data.recent_matches %}
+        <!-- Upcoming Matches -->
+        {% if data.upcoming_matches %}
+          <div class="upcoming-matches">
+            {% for match in data.upcoming_matches[:2] %}
+              <a href="/match/{{ match.fixture_id }}" class="team-match-item">
+                <div class="match-date-col">
+                  <div>{{ match.date }}</div>
+                  <div>{{ match.time }}</div>
+                  <span class="match-league-badge">{{ match.league_name }}</span>
+                </div>
+                <div class="match-teams-col">
+                  <div class="match-team-row {% if match.home_id == data.team.id %}highlight{% endif %}">
+                    <img src="{{ match.home_logo }}" class="match-team-logo-small" alt="">
+                    <span>{{ match.home_name }}</span>
+                  </div>
+                  <div class="match-team-row {% if match.away_id == data.team.id %}highlight{% endif %}">
+                    <img src="{{ match.away_logo }}" class="match-team-logo-small" alt="">
+                    <span>{{ match.away_name }}</span>
+                  </div>
+                </div>
+                <div class="match-status-badge {% if match.is_live %}live{% else %}upcoming{% endif %}">
+                  {{ match.status_display }}
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <!-- Divider -->
+        {% if data.upcoming_matches and data.recent_matches %}
+          <div class="matches-divider">RECENT MATCHES</div>
+        {% endif %}
+
+        <!-- Recent Matches -->
+        {% if data.recent_matches %}
+          <div class="recent-matches">
+            {% for match in data.recent_matches[:3] %}
+              <a href="/match/{{ match.fixture_id }}" class="team-match-item">
+                <div class="match-date-col">
+                  <div>{{ match.date }}</div>
+                  <div>{{ match.time }}</div>
+                  <span class="match-league-badge">{{ match.league_name }}</span>
+                </div>
+                <div class="match-teams-col">
+                  <div class="match-team-row {% if match.home_id == data.team.id %}highlight{% endif %}">
+                    <img src="{{ match.home_logo }}" class="match-team-logo-small" alt="">
+                    <span>{{ match.home_name }}</span>
+                  </div>
+                  <div class="match-team-row {% if match.away_id == data.team.id %}highlight{% endif %}">
+                    <img src="{{ match.away_logo }}" class="match-team-logo-small" alt="">
+                    <span>{{ match.away_name }}</span>
+                  </div>
+                </div>
+                <div class="match-score-col finished">
+                  {{ match.home_goals }}<br>{{ match.away_goals }}
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+
+          <!-- Hidden matches -->
+          {% if data.recent_matches|length > 3 %}
+            <div class="hidden-matches" id="hiddenMatches">
+              {% for match in data.recent_matches[3:8] %}
+                <a href="/match/{{ match.fixture_id }}" class="team-match-item">
+                  <div class="match-date-col">
+                    <div>{{ match.date }}</div>
+                    <div>{{ match.time }}</div>
+                    <span class="match-league-badge">{{ match.league_name }}</span>
+                  </div>
+                  <div class="match-teams-col">
+                    <div class="match-team-row {% if match.home_id == data.team.id %}highlight{% endif %}">
+                      <img src="{{ match.home_logo }}" class="match-team-logo-small" alt="">
+                      <span>{{ match.home_name }}</span>
+                    </div>
+                    <div class="match-team-row {% if match.away_id == data.team.id %}highlight{% endif %}">
+                      <img src="{{ match.away_logo }}" class="match-team-logo-small" alt="">
+                      <span>{{ match.away_name }}</span>
+                    </div>
+                  </div>
+                  <div class="match-score-col finished">
+                    {{ match.home_goals }}<br>{{ match.away_goals }}
+                  </div>
+                </a>
+              {% endfor %}
+            </div>
+            <button class="show-more-btn" id="showMoreBtn" onclick="toggleMoreMatches()">
+              Show More Matches
+            </button>
+          {% endif %}
+        {% endif %}
+      {% else %}
+        <div class="no-data">No matches available</div>
+      {% endif %}
+    </div>
+
+    <!-- Standings Section with Filters -->
+    <div class="standings-section">
+      <h2 class="section-title blue">📊 Standings</h2>
+      
+      <div class="filters-section">
+        <div class="filters-title">Filter by:</div>
+        <div class="filters-row">
+          <div class="filter-group">
+            <label class="filter-label" for="seasonSelect">Season</label>
+            <select id="seasonSelect" class="filter-select" onchange="updateStandings()">
+              {% for season in data.available_seasons %}
+                <option value="{{ season }}" {% if season == data.current_season %}selected{% endif %}>
+                  {{ season }}/{{ season + 1 }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="leagueSelect">League</label>
+            <select id="leagueSelect" class="filter-select" onchange="updateStandings()">
+              <option value="">All Leagues</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div id="standingsContainer">
+        <div class="loading-spinner">Loading standings...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const teamId = {{ data.team.id }};
+    const domesticLeagueId = {{ data.domestic_league_id or 'null' }};
+    let leaguesBySeason = {{ data.leagues_by_season|tojson }};
+
+    function toggleMoreMatches() {
+      const hiddenMatches = document.getElementById('hiddenMatches');
+      const btn = document.getElementById('showMoreBtn');
+      
+      if (hiddenMatches.classList.contains('visible')) {
+        hiddenMatches.classList.remove('visible');
+        btn.textContent = 'Show More Matches';
+      } else {
+        hiddenMatches.classList.add('visible');
+        btn.textContent = 'Show Less';
+      }
+    }
+
+    function updateLeagueOptions() {
+      const seasonSelect = document.getElementById('seasonSelect');
+      const leagueSelect = document.getElementById('leagueSelect');
+      const selectedSeason = parseInt(seasonSelect.value);
+      
+      // Clear current options
+      leagueSelect.innerHTML = '<option value="">All Leagues</option>';
+      
+      // Add leagues for selected season
+      if (leaguesBySeason[selectedSeason]) {
+        leaguesBySeason[selectedSeason].forEach(league => {
+          const option = document.createElement('option');
+          option.value = league.id;
+          option.textContent = league.name;
+          
+          // Select domestic league by default if it's in the list
+          if (domesticLeagueId && league.id == domesticLeagueId && selectedSeason == {{ data.current_season }}) {
+            option.selected = true;
+          }
+          
+          leagueSelect.appendChild(option);
+        });
+      }
+    }
+
+    async function updateStandings() {
+      const seasonSelect = document.getElementById('seasonSelect');
+      const leagueSelect = document.getElementById('leagueSelect');
+      const container = document.getElementById('standingsContainer');
+      
+      const season = seasonSelect.value;
+      const leagueId = leagueSelect.value;
+      
+      container.innerHTML = '<div class="loading-spinner">Loading standings...</div>';
+      
+      try {
+        const url = `/api/team/${teamId}/standings?season=${season}` + (leagueId ? `&league=${leagueId}` : '');
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.standings && data.standings.length > 0) {
+          let html = '';
+          
+          data.standings.forEach(standing => {
+            html += `
+              <div style="margin-bottom: 20px;">
+                <h3 style="color: #0b74ff; font-size: 16px; margin-bottom: 12px; font-weight: 700;">
+                  ${standing.league_name}
+                </h3>
+                <div class="standings-scroll">
+                  <table class="standings">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Team</th>
+                        <th>MP</th>
+                        <th>W</th>
+                        <th>D</th>
+                        <th>L</th>
+                        <th>G</th>
+                        <th>PTS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            standing.rows.forEach(row => {
+              html += `
+                <tr class="${row.zone || ''} ${row.highlight ? 'highlight-team' : ''}">
+                  <td>${row.rank}</td>
+                  <td class="team-cell">
+                    ${row.logo ? `<img src="${row.logo}" class="small-logo">` : ''}
+                    <span class="team-name-cell">${row.name}</span>
+                  </td>
+                  <td>${row.played}</td>
+                  <td>${row.win}</td>
+                  <td>${row.draw}</td>
+                  <td>${row.loss}</td>
+                  <td>${row.goals_for}:${row.goals_against}</td>
+                  <td><strong>${row.points}</strong></td>
+                </tr>
+              `;
+            });
+            
+            html += `
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            `;
+          });
+          
+          container.innerHTML = html;
+        } else {
+          container.innerHTML = '<div class="no-data">No standings available for selected filters</div>';
+        }
+      } catch (error) {
+        console.error('Error loading standings:', error);
+        container.innerHTML = '<div class="no-data">Error loading standings</div>';
+      }
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      updateLeagueOptions();
+      updateStandings();
+    });
+
+    // Update league options when season changes
+    document.getElementById('seasonSelect').addEventListener('change', updateLeagueOptions);
+  </script>
+</body>
+</html>

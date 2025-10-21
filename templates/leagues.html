@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AI Betting Bot - Football Matches</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f5f5f5;
+      color: #1f2937;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app-container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: #fff;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #0b74ff, #0ea5e9);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+    }
+
+    .app-name {
+      color: #fff;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .user-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .user-icon:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.05);
+    }
+
+    .user-icon svg {
+      width: 20px;
+      height: 20px;
+      fill: #fff;
+    }
+
+    /* Search bar */
+    .search-container {
+      padding: 16px 20px;
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .search-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 12px;
+      color: #9ca3af;
+      font-size: 18px;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 12px 12px 12px 40px;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      font-size: 15px;
+      background: #f9fafb;
+      outline: none;
+    }
+
+    .search-input:focus {
+      background: #fff;
+      border-color: #0b74ff;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 0 20px;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      font-size: 15px;
+      font-weight: 600;
+      color: #6b7280;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab.active {
+      color: #0b74ff;
+      border-bottom-color: #0b74ff;
+    }
+
+    /* Country filters */
+    .country-filters {
+      display: flex;
+      gap: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .country-filters::-webkit-scrollbar {
+      display: none;
+    }
+
+    .country-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 20px;
+      background: #f3f4f6;
+      color: #1f2937;
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 2px solid transparent;
+    }
+
+    .country-chip.active {
+      background: linear-gradient(135deg, #0b74ff, #0ea5e9);
+      color: #fff;
+      border-color: #0b74ff;
+    }
+
+    .country-flag {
+      width: 20px;
+      height: 14px;
+      border-radius: 2px;
+      object-fit: cover;
+    }
+
+    .country-count {
+      background: rgba(0, 0, 0, 0.1);
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .country-chip.active .country-count {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    /* Odds filters */
+    .odds-filters {
+      display: flex;
+      gap: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .odds-filters::-webkit-scrollbar {
+      display: none;
+    }
+
+    .odds-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 20px;
+      background: #f3f4f6;
+      color: #1f2937;
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 2px solid transparent;
+    }
+
+    .odds-chip.active {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #fff;
+      border-color: #f59e0b;
+    }
+
+    .odds-icon {
+      font-size: 16px;
+    }
+
+    .odds-count {
+      background: rgba(0, 0, 0, 0.1);
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .odds-chip.active .odds-count {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    /* Date header */
+    .date-header {
+      padding: 20px 20px 12px;
+      background: #fff;
+    }
+
+    .date-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1f2937;
+    }
+
+    .date-subtitle {
+      font-size: 14px;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+
+    .date-underline {
+      width: 40px;
+      height: 4px;
+      background: linear-gradient(90deg, #0b74ff, #0ea5e9);
+      border-radius: 2px;
+      margin-top: 8px;
+    }
+
+    /* Matches list */
+    .matches-container {
+      padding: 8px 20px 80px;
+      background: #fff;
+    }
+
+    .league-section {
+      margin-bottom: 24px;
+    }
+
+    .league-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0 12px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #6b7280;
+    }
+
+    .league-flag {
+      width: 20px;
+      height: 14px;
+      border-radius: 2px;
+      object-fit: cover;
+    }
+
+    .popular-badge {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #fff;
+      padding: 3px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-left: auto;
+    }
+
+    .match-wrapper {
+      margin-bottom: 10px;
+    }
+
+    .match-item {
+      display: flex;
+      align-items: center;
+      padding: 14px 16px;
+      background: #f9fafb;
+      border-radius: 12px 12px 0 0;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.2s;
+    }
+
+    .match-item:hover {
+      background: #f3f4f6;
+      transform: translateX(2px);
+    }
+
+    .match-teams {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .team-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .team-logo {
+      width: 24px;
+      height: 24px;
+      object-fit: contain;
+    }
+
+    .team-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .match-time {
+      font-size: 14px;
+      font-weight: 600;
+      color: #6b7280;
+      min-width: 60px;
+      text-align: right;
+    }
+
+    /* Prediction Banner */
+    .prediction-banner {
+      background: linear-gradient(135deg, #0b74ff, #0ea5e9);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 0 0 12px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 2px 4px rgba(11, 116, 255, 0.2);
+    }
+
+    .prediction-text {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #fff;
+    }
+
+    .prediction-icon {
+      font-size: 16px;
+    }
+
+    .prediction-odds {
+      background: rgba(255, 255, 255, 0.25);
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 14px;
+      color: #fff;
+    }
+
+    .no-matches {
+      text-align: center;
+      padding: 60px 20px;
+      color: #9ca3af;
+    }
+
+    .no-matches-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 60px 20px;
+      color: #6b7280;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid #f3f4f6;
+      border-top-color: #0b74ff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Bottom nav */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #fff;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      justify-content: space-around;
+      padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 20px;
+      color: #9ca3af;
+      text-decoration: none;
+      font-size: 11px;
+      font-weight: 600;
+      transition: color 0.2s;
+    }
+
+    .nav-item.active {
+      color: #0b74ff;
+    }
+
+    .nav-icon {
+      font-size: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <img src="/static/logo.png" alt="Logo" class="logo" onerror="this.style.display='none'">
+        <div class="app-name">AI Betting Bot</div>
+      </div>
+      <a href="/login" class="user-icon">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+        </svg>
+      </a>
+    </div>
+
+    <!-- Search -->
+    <div class="search-container">
+      <div class="search-wrapper">
+        <span class="search-icon">🔍</span>
+        <input
+          type="text"
+          class="search-input"
+          id="searchInput"
+          placeholder="Search Team or League"
+          autocomplete="off"
+        >
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="tab active" data-day="0">Today</div>
+      <div class="tab" data-day="1">Tomorrow</div>
+      <div class="tab" data-day="2">Day After</div>
+    </div>
+
+    <!-- Country filters -->
+    <div class="country-filters" id="countryFilters">
+      <div class="country-chip active" data-country="">
+        <span>All</span>
+        <span class="country-count" id="countAll">0</span>
+      </div>
+    </div>
+
+    <!-- Odds filters -->
+    <div class="odds-filters" id="oddsFilters">
+      <div class="odds-chip active" data-odds="all">
+        <span class="odds-icon">💰</span>
+        <span>All Odds</span>
+        <span class="odds-count">0</span>
+      </div>
+      <div class="odds-chip" data-odds="low">
+        <span class="odds-icon">🟢</span>
+        <span>1.00 - 1.50</span>
+        <span class="odds-count">0</span>
+      </div>
+      <div class="odds-chip" data-odds="medium-low">
+        <span class="odds-icon">🟡</span>
+        <span>1.51 - 2.00</span>
+        <span class="odds-count">0</span>
+      </div>
+      <div class="odds-chip" data-odds="medium">
+        <span class="odds-icon">🟠</span>
+        <span>2.01 - 3.00</span>
+        <span class="odds-count">0</span>
+      </div>
+      <div class="odds-chip" data-odds="high">
+        <span class="odds-icon">🔴</span>
+        <span>3.01+</span>
+        <span class="odds-count">0</span>
+      </div>
+    </div>
+
+    <!-- Date header -->
+    <div class="date-header">
+      <div class="date-title">Today</div>
+      <div class="date-subtitle" id="dateSubtitle">Monday, Oct 20</div>
+      <div class="date-underline"></div>
+    </div>
+
+    <!-- Matches -->
+    <div class="matches-container" id="matchesContainer">
+      <div class="loading">
+        <div class="spinner"></div>
+        <div style="margin-top: 16px;">Loading matches...</div>
+      </div>
+    </div>
+
+    <!-- Bottom nav -->
+    <div class="bottom-nav">
+      <a href="/leagues" class="nav-item active">
+        <div class="nav-icon">⚽</div>
+        <div>Bets</div>
+      </a>
+      <a href="/history" class="nav-item">
+        <div class="nav-icon">📜</div>
+        <div>History</div>
+      </a>
+      <a href="#" class="nav-item">
+        <div class="nav-icon">⚙️</div>
+        <div>Settings</div>
+      </a>
+    </div>
+  </div>
+
+  <script>
+    let allMatches = [];
+    let filteredMatches = [];
+    let currentDate = new Date();
+    let selectedDay = 0;
+    let selectedCountry = '';
+    let selectedOddsRange = 'all';
+    let searchQuery = '';
+
+    const TOP_LEAGUES = [39, 140, 61, 78, 135];
+
+    const COUNTRY_FLAGS = {
+      'World': '🌎',
+      'Europe': '🇪🇺',
+      'England': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+      'Spain': '🇪🇸',
+      'Italy': '🇮🇹',
+      'France': '🇫🇷',
+      'Germany': '🇩🇪',
+      'Portugal': '🇵🇹',
+      'Netherlands': '🇳🇱',
+      'Belgium': '🇧🇪',
+      'Turkey': '🇹🇷',
+      'Scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+      'Austria': '🇦🇹',
+      'Switzerland': '🇨🇭',
+      'Greece': '🇬🇷',
+      'Poland': '🇵🇱',
+      'Ukraine': '🇺🇦',
+      'Russia': '🇷🇺',
+      'Norway': '🇳🇴',
+      'Sweden': '🇸🇪',
+      'Denmark': '🇩🇰',
+      'Brazil': '🇧🇷',
+      'Argentina': '🇦🇷',
+      'Mexico': '🇲🇽',
+      'USA': '🇺🇸',
+      'Japan': '🇯🇵',
+      'China': '🇨🇳',
+      'Saudi-Arabia': '🇸🇦',
+      'Israel': '🇮🇱'
+    };
+
+    const COUNTRY_ORDER = [
+      'Europe', 'World', 'England', 'Spain', 'Italy', 'France', 'Germany'
+    ];
+
+    function selectCountry(country) {
+      console.log('selectCountry called with:', country);
+      selectedCountry = country;
+
+      document.querySelectorAll('.country-chip').forEach(chip => {
+        chip.classList.remove('active');
+        if (chip.getAttribute('data-country') === country) {
+          chip.classList.add('active');
+        }
+      });
+
+      filterAndRender();
+    }
+
+    function selectOddsRange(range) {
+      console.log('selectOddsRange called with:', range);
+      selectedOddsRange = range;
+
+      document.querySelectorAll('.odds-chip').forEach(chip => {
+        chip.classList.remove('active');
+        if (chip.getAttribute('data-odds') === range) {
+          chip.classList.add('active');
+        }
+      });
+
+      filterAndRender();
+    }
+
+    function getOddsColorGradient(odds) {
+      if (!odds) return 'linear-gradient(135deg, #6b7280, #4b5563)';
+
+      const oddsValue = parseFloat(odds);
+
+      if (oddsValue >= 1.00 && oddsValue <= 1.50) {
+        return 'linear-gradient(135deg, #10b981, #059669)';
+      } else if (oddsValue >= 1.51 && oddsValue <= 2.00) {
+        return 'linear-gradient(135deg, #ffde59, #fbbf24)';
+      } else if (oddsValue >= 2.01 && oddsValue <= 3.00) {
+        return 'linear-gradient(135deg, #f59e0b, #d97706)';
+      } else {
+        return 'linear-gradient(135deg, #ef4444, #dc2626)';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      updateDateDisplay();
+      loadMatches();
+
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          selectedDay = parseInt(tab.dataset.day);
+          currentDate = new Date();
+          currentDate.setDate(currentDate.getDate() + selectedDay);
+          updateDateDisplay();
+          loadMatches();
+        });
+      });
+
+      document.getElementById('searchInput').addEventListener('input', (e) => {
+        searchQuery = e.target.value.toLowerCase();
+        filterAndRender();
+      });
+
+      document.querySelectorAll('.odds-chip').forEach(chip => {
+        chip.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          const range = this.getAttribute('data-odds');
+          selectOddsRange(range);
+        });
+      });
+    });
+
+    function updateDateDisplay() {
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+      const dayName = days[currentDate.getDay()];
+      const monthName = months[currentDate.getMonth()];
+      const date = currentDate.getDate();
+
+      const title = selectedDay === 0 ? 'Today' : selectedDay === 1 ? 'Tomorrow' : dayName;
+
+      document.querySelector('.date-title').textContent = title;
+      document.getElementById('dateSubtitle').textContent = `${dayName}, ${monthName} ${date}`;
+
+      const tabs = document.querySelectorAll('.tab');
+      if (tabs.length > 2) {
+        const futureDate = new Date();
+        futureDate.setDate(futureDate.getDate() + 2);
+        tabs[2].textContent = days[futureDate.getDay()].substring(0, 3);
+      }
+    }
+
+    async function loadMatches() {
+      const container = document.getElementById('matchesContainer');
+      container.innerHTML = '<div class="loading"><div class="spinner"></div><div style="margin-top: 16px;">Loading matches...</div></div>';
+
+      const dateStr = currentDate.toISOString().split('T')[0];
+
+      try {
+        const response = await fetch(`/api/fixtures?date=${dateStr}`);
+        const data = await response.json();
+
+        allMatches = data.fixtures || [];
+
+        filterAndRender();
+
+      } catch (error) {
+        console.error('Error loading matches:', error);
+        container.innerHTML = '<div class="no-matches"><div class="no-matches-icon">⚠️</div><div>Error loading matches</div></div>';
+      }
+    }
+
+    function filterAndRender() {
+      console.log('filterAndRender called - selectedOddsRange:', selectedOddsRange, 'selectedCountry:', selectedCountry);
+
+      filteredMatches = allMatches.filter(match => {
+        // Search filter
+        if (searchQuery) {
+          const homeTeam = match.teams?.home?.name?.toLowerCase() || '';
+          const awayTeam = match.teams?.away?.name?.toLowerCase() || '';
+          const league = match.league?.name?.toLowerCase() || '';
+
+          if (!homeTeam.includes(searchQuery) &&
+              !awayTeam.includes(searchQuery) &&
+              !league.includes(searchQuery)) {
+            return false;
+          }
+        }
+
+        // Country filter
+        if (selectedCountry && match.league?.country !== selectedCountry) {
+          return false;
+        }
+
+        // Odds filter
+        if (selectedOddsRange !== 'all') {
+          const odds = match.advice_odd;
+          if (!odds) return false;
+
+          const oddsValue = parseFloat(odds);
+
+          switch(selectedOddsRange) {
+            case 'low':
+              if (oddsValue < 1.00 || oddsValue > 1.50) return false;
+              break;
+            case 'medium-low':
+              if (oddsValue < 1.51 || oddsValue > 2.00) return false;
+              break;
+            case 'medium':
+              if (oddsValue < 2.01 || oddsValue > 3.00) return false;
+              break;
+            case 'high':
+              if (oddsValue <= 3.00) return false;
+              break;
+          }
+        }
+
+        return true;
+      });
+
+      console.log('Filtered matches count:', filteredMatches.length);
+
+      // Aktualizuj OBYDWA filtry na podstawie przefiltrowanych wyników
+      renderCountryFilters();
+      updateOddsFiltersCounts();
+      renderMatches();
+    }
+
+    function renderCountryFilters() {
+      const container = document.getElementById('countryFilters');
+
+      // LICZNIKI KRAJÓW bazują na meczu przefiltrowanych przez ODDS (ale NIE przez kraj)
+      const matchesForCountryCounting = allMatches.filter(match => {
+        // Search filter
+        if (searchQuery) {
+          const homeTeam = match.teams?.home?.name?.toLowerCase() || '';
+          const awayTeam = match.teams?.away?.name?.toLowerCase() || '';
+          const league = match.league?.name?.toLowerCase() || '';
+
+          if (!homeTeam.includes(searchQuery) &&
+              !awayTeam.includes(searchQuery) &&
+              !league.includes(searchQuery)) {
+            return false;
+          }
+        }
+
+        // Odds filter (bez country filter!)
+        if (selectedOddsRange !== 'all') {
+          const odds = match.advice_odd;
+          if (!odds) return false;
+
+          const oddsValue = parseFloat(odds);
+
+          switch(selectedOddsRange) {
+            case 'low':
+              if (oddsValue < 1.00 || oddsValue > 1.50) return false;
+              break;
+            case 'medium-low':
+              if (oddsValue < 1.51 || oddsValue > 2.00) return false;
+              break;
+            case 'medium':
+              if (oddsValue < 2.01 || oddsValue > 3.00) return false;
+              break;
+            case 'high':
+              if (oddsValue <= 3.00) return false;
+              break;
+          }
+        }
+
+        return true;
+      });
+
+      const countryCounts = {};
+      matchesForCountryCounting.forEach(match => {
+        const country = match.league?.country || 'Other';
+        countryCounts[country] = (countryCounts[country] || 0) + 1;
+      });
+
+      const sortedCountries = Object.keys(countryCounts).sort((a, b) => {
+        const aIndex = COUNTRY_ORDER.indexOf(a);
+        const bIndex = COUNTRY_ORDER.indexOf(b);
+
+        if (aIndex !== -1 && bIndex !== -1) {
+          return aIndex - bIndex;
+        }
+
+        if (aIndex !== -1) return -1;
+        if (bIndex !== -1) return 1;
+
+        return a.localeCompare(b);
+      });
+
+      let html = `
+        <div class="country-chip ${selectedCountry === '' ? 'active' : ''}" data-country="">
+          <span>All</span>
+          <span class="country-count">${matchesForCountryCounting.length}</span>
+        </div>
+      `;
+
+      sortedCountries.forEach(country => {
+        const flag = COUNTRY_FLAGS[country] || '🌎';
+        const count = countryCounts[country];
+        const active = selectedCountry === country ? 'active' : '';
+
+        html += `
+          <div class="country-chip ${active}" data-country="${country}">
+            <span>${flag}</span>
+            <span>${count}</span>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+
+      container.querySelectorAll('.country-chip').forEach(chip => {
+        chip.addEventListener('click', function() {
+          const country = this.getAttribute('data-country');
+          selectCountry(country);
+        });
+      });
+    }
+
+    function updateOddsFiltersCounts() {
+      console.log('updateOddsFiltersCounts called');
+
+      // LICZNIKI ODDS bazują na meczach przefiltrowanych przez KRAJ (ale NIE przez odds)
+      const matchesForOddsCounting = allMatches.filter(match => {
+        // Search filter
+        if (searchQuery) {
+          const homeTeam = match.teams?.home?.name?.toLowerCase() || '';
+          const awayTeam = match.teams?.away?.name?.toLowerCase() || '';
+          const league = match.league?.name?.toLowerCase() || '';
+
+          if (!homeTeam.includes(searchQuery) &&
+              !awayTeam.includes(searchQuery) &&
+              !league.includes(searchQuery)) {
+            return false;
+          }
+        }
+
+        // Country filter (bez odds filter!)
+        if (selectedCountry && match.league?.country !== selectedCountry) {
+          return false;
+        }
+
+        return true;
+      });
+
+      let allCount = 0;
+      let lowCount = 0;
+      let mediumLowCount = 0;
+      let mediumCount = 0;
+      let highCount = 0;
+
+      matchesForOddsCounting.forEach(match => {
+        allCount++;
+
+        const odds = match.advice_odd;
+        if (!odds) return;
+
+        const oddsValue = parseFloat(odds);
+
+        if (oddsValue >= 1.00 && oddsValue <= 1.50) lowCount++;
+        else if (oddsValue >= 1.51 && oddsValue <= 2.00) mediumLowCount++;
+        else if (oddsValue >= 2.01 && oddsValue <= 3.00) mediumCount++;
+        else if (oddsValue > 3.00) highCount++;
+      });
+
+      console.log('Odds counts - all:', allCount, 'low:', lowCount, 'medium-low:', mediumLowCount, 'medium:', mediumCount, 'high:', highCount);
+
+      const oddsChips = document.querySelectorAll('.odds-chip');
+      oddsChips.forEach(chip => {
+        const range = chip.getAttribute('data-odds');
+        let count = 0;
+
+        switch(range) {
+          case 'all':
+            count = allCount;
+            break;
+          case 'low':
+            count = lowCount;
+            break;
+          case 'medium-low':
+            count = mediumLowCount;
+            break;
+          case 'medium':
+            count = mediumCount;
+            break;
+          case 'high':
+            count = highCount;
+            break;
+        }
+
+        let countBadge = chip.querySelector('.odds-count');
+        if (countBadge) {
+          countBadge.textContent = count;
+        }
+      });
+    }
+
+    function renderMatches() {
+      const container = document.getElementById('matchesContainer');
+
+      if (filteredMatches.length === 0) {
+        container.innerHTML = `
+          <div class="no-matches">
+            <div class="no-matches-icon">⚽</div>
+            <div>No matches found</div>
+          </div>
+        `;
+        return;
+      }
+
+      const groupedByLeague = {};
+      filteredMatches.forEach(match => {
+        const leagueId = match.league?.id || 0;
+        if (!groupedByLeague[leagueId]) {
+          groupedByLeague[leagueId] = {
+            name: match.league?.name || 'Unknown',
+            country: match.league?.country || '',
+            matches: [],
+            isTop: TOP_LEAGUES.includes(leagueId)
+          };
+        }
+        groupedByLeague[leagueId].matches.push(match);
+      });
+
+      const sortedLeagues = Object.values(groupedByLeague).sort((a, b) => {
+        if (a.isTop && !b.isTop) return -1;
+        if (!a.isTop && b.isTop) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      let html = '';
+      sortedLeagues.forEach(league => {
+        const flag = COUNTRY_FLAGS[league.country] || '🌎';
+
+        html += `
+          <div class="league-section">
+            <div class="league-header">
+              <span>${flag}</span>
+              <span>${league.name} - ${league.country}</span>
+              ${league.isTop ? '<span class="popular-badge">Popular</span>' : ''}
+            </div>
+        `;
+
+        league.matches.forEach(match => {
+          html += generateMatchHTML(match);
+        });
+
+        html += '</div>';
+      });
+
+      container.innerHTML = html;
+    }
+
+    function generateMatchHTML(match) {
+      const homeTeam = match.teams?.home?.name || 'Home';
+      const awayTeam = match.teams?.away?.name || 'Away';
+      const homeLogo = match.teams?.home?.logo || '';
+      const awayLogo = match.teams?.away?.logo || '';
+      const fixtureId = match.fixture?.id;
+      const date = match.fixture?.date || '';
+
+      let timeDisplay = '';
+      try {
+        const dt = new Date(date);
+        timeDisplay = dt.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+      } catch {
+        timeDisplay = date.substring(11, 16);
+      }
+
+      const adviceOdd = match.advice_odd;
+      const oddsDisplay = adviceOdd ? `@${parseFloat(adviceOdd).toFixed(2)}` : 'View odds';
+      const bannerGradient = getOddsColorGradient(adviceOdd);
+
+      const predictionBanner = `
+        <a href="/match/${fixtureId}" class="prediction-banner" style="text-decoration: none; color: #fff; background: ${bannerGradient};">
+          <div class="prediction-text">
+            <span class="prediction-icon">🎯</span>
+            <span>Prediction available</span>
+          </div>
+          <div class="prediction-odds">${oddsDisplay}</div>
+        </a>
+      `;
+
+      return `
+        <div class="match-wrapper">
+          <a href="/match/${fixtureId}" class="match-item">
+            <div class="match-teams">
+              <div class="team-row">
+                ${homeLogo ? `<img src="${homeLogo}" class="team-logo" alt="">` : ''}
+                <span class="team-name">${homeTeam}</span>
+              </div>
+              <div class="team-row">
+                ${awayLogo ? `<img src="${awayLogo}" class="team-logo" alt="">` : ''}
+                <span class="team-name">${awayTeam}</span>
+              </div>
+            </div>
+            <div class="match-time">${timeDisplay}</div>
+          </a>
+          ${predictionBanner}
+        </div>
+      `;
+    }
+
+    window.selectCountry = selectCountry;
+    window.selectOddsRange = selectOddsRange;
+  </script>
+</body>
+</html>

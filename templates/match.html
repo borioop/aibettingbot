@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Comparison — {{ data.home.name }} vs {{ data.away.name }}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="/static/styles.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .team-clickable { cursor: pointer; transition: all 0.2s; text-decoration: none; color: inherit; }
+    .team-clickable:hover { transform: scale(1.02); opacity: 0.9; }
+    .team-clickable:hover .team-name { color: #0b74ff; }
+    .odds-pill.winning { background: linear-gradient(135deg, #10b981, #059669); color: #fff; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3); }
+    .h2h-item-link { text-decoration: none; color: inherit; display: block; transition: all 0.2s; }
+    .h2h-item-link:hover .h2h-item { background: #eef2ff; transform: translateX(4px); }
+    .show-more-h2h-btn, .show-more-recent-btn { width: 100%; padding: 10px; background: linear-gradient(90deg, #64748b, #475569); color: #fff; border: none; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s; margin-top: 8px; }
+    .show-more-h2h-btn:hover, .show-more-recent-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(100, 116, 139, 0.3); }
+    .hidden-h2h, .hidden-recent { display: none; }
+    .hidden-h2h.visible, .hidden-recent.visible { display: block; }
+    .mini-item-link { text-decoration: none; color: inherit; display: block; }
+    .mini-item-link:hover .mini-item { background: #eef2ff; transform: translateX(2px); }
+    
+    /* --- NEW STYLES FOR ADVICE SECTION --- */
+    .advice-card {
+      background: linear-gradient(135deg, #1f2937, #374151);
+      border-radius: 10px;
+      padding: 14px;
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.1), 0 0 15px rgba(94, 23, 235, 0.2);
+      margin-top: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .advice-card .section-title {
+        background: transparent;
+        color: #fff;
+        padding-left: 0;
+        padding-top: 0;
+        box-shadow: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 14px;
+    }
+    .advice-card .advice-content {
+        padding: 10px;
+        text-align: center;
+    }
+    .advice-card .advice-content p {
+        background: transparent;
+        font-size: 18px;
+        font-weight: 700;
+        color: #fff;
+        margin: 0;
+        padding: 10px 0;
+    }
+    .advice-card .advice-content strong {
+        color: #a78bfa;
+        margin-left: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="sticky-banner">
+    <div class="banner-inner">
+      <img src="/static/logo.png" alt="AI Betting Bot" class="banner-logo" onerror="this.style.display='none'">
+      <div class="banner-text">Powered by AI Betting Bot</div>
+    </div>
+  </div>
+
+  <div class="page" style="padding-top:60px;">
+
+    <div class="top-card">
+      <h2 class="section-title blue">Match Details</h2>
+      <div class="match-header">
+        
+        <div class="match-datetime">
+          <div class="date-line">{{ data.date_fmt }}</div>
+          {% if data.status_info.short in ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'SUSP', 'INT', 'LIVE'] %}
+            <div class="live-status">
+              <span class="live-dot"></span> LIVE <span class="live-minute">{{ data.status_info.elapsed }}'</span>
+              <div class="live-score">{{ data.status_info.home_goals }} - {{ data.status_info.away_goals }}</div>
+            </div>
+          {% elif data.status_info.short in ['FT', 'AET', 'PEN'] %}
+            <div class="ft-status">
+              Full Time Result
+              <div class="ft-score">{{ data.status_info.home_goals }} - {{ data.status_info.away_goals }}</div>
+            </div>
+          {% endif %}
+        </div>
+
+        <a href="/team/{{ data.home.id }}" class="team team-left team-clickable">
+          {% if data.home.logo %}<img src="{{ data.home.logo }}" alt="{{ data.home.name }} logo" class="team-logo">{% endif %}
+          <div class="team-meta">
+            <div class="team-name" title="{{ data.home.name }}">{{ data.home.name }}</div>
+            <div class="team-small">
+              <span class="position">#{{ data.home.position or "—" }}</span>
+              {% if data.home.form_list %}<span class="form">{% for ch in data.home.form_list %}<span class="form-pill {{ 'win' if ch == 'W' else ('draw' if ch == 'D' else ('loss' if ch == 'L' else 'unknown')) }}">{{ ch }}</span>{% endfor %}</span>{% endif %}
+            </div>
+          </div>
+        </a>
+
+        <div class="vs">VS</div>
+
+        <a href="/team/{{ data.away.id }}" class="team team-right team-clickable">
+          {% if data.away.logo %}<img src="{{ data.away.logo }}" alt="{{ data.away.name }} logo" class="team-logo">{% endif %}
+          <div class="team-meta">
+            <div class="team-name" title="{{ data.away.name }}">{{ data.away.name }}</div>
+            <div class="team-small">
+              <span class="position">#{{ data.away.position or "—" }}</span>
+              {% if data.away.form_list %}<span class="form">{% for ch in data.away.form_list %}<span class="form-pill {{ 'win' if ch == 'W' else ('draw' if ch == 'D' else ('loss' if ch == 'L' else 'unknown')) }}">{{ ch }}</span>{% endfor %}</span>{% endif %}
+            </div>
+          </div>
+        </a>
+        
+        <div class="odds-wrapper">
+          <span class="odds-pill {% if data.odds.home_won %}winning{% endif %}">1: <strong>{{ data.odds.home }}</strong></span>
+          <span class="odds-pill {% if data.odds.draw_won %}winning{% endif %}">X: <strong>{{ data.odds.draw }}</strong></span>
+          <span class="odds-pill {% if data.odds.away_won %}winning{% endif %}">2: <strong>{{ data.odds.away }}</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="section-title blue">Team Comparison</h2>
+    <div class="radar-wrap"><canvas id="radarChart"></canvas></div>
+
+    <div class="detailed-metrics">
+      <h2 class="section-title blue">Detailed metrics</h2>
+      <div class="bars">
+        {% for b in data.bars %}
+          {% if b.is_special_cta %}
+            <a href="https://aibettingbot.app" target="_blank" rel="noopener" class="cta-link">
+              <div class="prediction-cta-card">
+                <h3 class="prediction-cta-title">{{ b.label }}</h3>
+                <p class="prediction-cta-text">Get this and 50+ daily predictions powered by first fully automated <strong>AI Betting Bot</strong>.</p>
+              </div>
+            </a>
+          {% else %}
+            <div class="bar-row">
+              <div class="bar-head"><div class="label">{{ b.label }}</div></div>
+              <div class="bar-track">
+                <div class="bar-home" style="width: {{ b.home }}%"><span class="bar-value">{{ b.home }}%</span></div>
+                <div class="bar-away" style="width: {{ b.away }}%"><span class="bar-value">{{ b.away }}%</span></div>
+              </div>
+              <div class="bar-names">
+                <span class="home-name">{{ data.home.name }}</span>
+                <span class="away-name">{{ data.away.name }}</span>
+              </div>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    
+    <div class="advice-card">
+        <h3 class="section-title">Prediction Powered By AI Betting Bot</h3>
+        <div class="advice-content">
+            <p>
+                {{ data.advice_short }}
+                {% if data.advice_odd %}
+                    <strong>@ {{ "%.2f"|format(data.advice_odd) }}</strong>
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    <div class="h2h">
+      <h3 class="section-title blue">Head-to-Head (recent)</h3>
+      {% if data.h2h %}
+        <div class="h2h-grid">
+          {% for m in data.h2h[:3] %}
+            <a href="/match/{{ m.fixture_id }}" class="h2h-item-link">
+              <div class="h2h-item">
+                <div class="h2h-date">{{ m.date }} <span class="h2h-league">— {{ m.league }}</span></div>
+                <div class="h2h-compact">
+                  <div class="row-line">
+                    <span class="h2h-name {% if m.winner == 'home' %}bold{% endif %}"><img src="{{ m.home_logo }}" class="inline-logo" alt=""> {{ m.home_name }}</span>
+                    <span class="h2h-score-mini">{{ m.home_goals }}</span>
+                  </div>
+                  <div class="row-line">
+                    <span class="h2h-name {% if m.winner == 'away' %}bold{% endif %}"><img src="{{ m.away_logo }}" class="inline-logo" alt=""> {{ m.away_name }}</span>
+                    <span class="h2h-score-mini">{{ m.away_goals }}</span>
+                  </div>
+                </div>
+              </div>
+            </a>
+          {% endfor %}
+        </div>
+        
+        {% if data.h2h|length > 3 %}
+          <div class="hidden-h2h" id="hiddenH2H">
+            {% for m in data.h2h[3:8] %}
+              <a href="/match/{{ m.fixture_id }}" class="h2h-item-link">
+                <div class="h2h-item">
+                  <div class="h2h-date">{{ m.date }} <span class="h2h-league">— {{ m.league }}</span></div>
+                  <div class="h2h-compact">
+                    <div class="row-line">
+                      <span class="h2h-name {% if m.winner == 'home' %}bold{% endif %}"><img src="{{ m.home_logo }}" class="inline-logo" alt=""> {{ m.home_name }}</span>
+                      <span class="h2h-score-mini">{{ m.home_goals }}</span>
+                    </div>
+                    <div class="row-line">
+                      <span class="h2h-name {% if m.winner == 'away' %}bold{% endif %}"><img src="{{ m.away_logo }}" class="inline-logo" alt=""> {{ m.away_name }}</span>
+                      <span class="h2h-score-mini">{{ m.away_goals }}</span>
+                    </div>
+                  </div>
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+          <button class="show-more-h2h-btn" id="showMoreH2HBtn" onclick="toggleH2H()">Show More H2H</button>
+        {% endif %}
+      {% else %}
+        <div class="muted">No H2H data available</div>
+      {% endif %}
+    </div>
+
+    <div class="recent-blocks">
+      <div class="recent-col">
+        <h4 class="section-title blue"><img src="{{ data.home.logo }}" class="inline-logo" alt=""> {{ data.home.name }} Home</h4>
+        {% if data.home_recent %}
+          <div class="mini-list">
+            {% for r in data.home_recent[:3] %}
+              <a href="/match/{{ r.fixture_id }}" class="mini-item-link">
+                <div class="mini-item">
+                  <div class="mini-date">{{ r.date }} <span class="mini-league">— {{ r.league }}</span></div>
+                  <div class="mini-row">
+                    {% set res = "D" if r.winner is none else ("W" if (r.winner == 'home' and r.is_home) or (r.winner == 'away' and not r.is_home) else "L") %}
+                    <div class="mini-result"><span class="form-pill {{ 'win' if res == 'W' else ('draw' if res == 'D' else 'loss') }}">{{ res }}</span></div>
+                    <div class="mini-op"><img src="{{ r.opponent_logo }}" class="inline-logo" alt=""> {{ r.opponent_name }}</div>
+                    <div class="mini-score"><span>{{ r.home_goals }}:{{ r.away_goals }}</span></div>
+                  </div>
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+          {% if data.home_recent|length > 3 %}
+            <div class="hidden-recent" id="hiddenHomeRecent">
+              {% for r in data.home_recent[3:8] %}
+                <a href="/match/{{ r.fixture_id }}" class="mini-item-link">
+                  <div class="mini-item">
+                    <div class="mini-date">{{ r.date }} <span class="mini-league">— {{ r.league }}</span></div>
+                    <div class="mini-row">
+                      {% set res = "D" if r.winner is none else ("W" if (r.winner == 'home' and r.is_home) or (r.winner == 'away' and not r.is_home) else "L") %}
+                      <div class="mini-result"><span class="form-pill {{ 'win' if res == 'W' else ('draw' if res == 'D' else 'loss') }}">{{ res }}</span></div>
+                      <div class="mini-op"><img src="{{ r.opponent_logo }}" class="inline-logo" alt=""> {{ r.opponent_name }}</div>
+                      <div class="mini-score"><span>{{ r.home_goals }}:{{ r.away_goals }}</span></div>
+                    </div>
+                  </div>
+                </a>
+              {% endfor %}
+            </div>
+            <button class="show-more-recent-btn" id="showMoreHomeBtn" onclick="toggleHomeRecent()">Show More Matches</button>
+          {% endif %}
+        {% else %}
+          <div class="muted">No recent home matches</div>
+        {% endif %}
+      </div>
+
+      <div class="recent-col">
+        <h4 class="section-title blue"><img src="{{ data.away.logo }}" class="inline-logo" alt=""> {{ data.away.name }} Away</h4>
+        {% if data.away_recent %}
+          <div class="mini-list">
+            {% for r in data.away_recent[:3] %}
+              <a href="/match/{{ r.fixture_id }}" class="mini-item-link">
+                <div class="mini-item">
+                  <div class="mini-date">{{ r.date }} <span class="mini-league">— {{ r.league }}</span></div>
+                  <div class="mini-row">
+                    {% set res = "D" if r.winner is none else ("W" if (r.winner == 'home' and r.is_home) or (r.winner == 'away' and not r.is_home) else "L") %}
+                    <div class="mini-result"><span class="form-pill {{ 'win' if res == 'W' else ('draw' if res == 'D' else 'loss') }}">{{ res }}</span></div>
+                    <div class="mini-op"><img src="{{ r.opponent_logo }}" class="inline-logo" alt=""> {{ r.opponent_name }}</div>
+                    <div class="mini-score"><span>{{ r.home_goals }}:{{ r.away_goals }}</span></div>
+                  </div>
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+          {% if data.away_recent|length > 3 %}
+            <div class="hidden-recent" id="hiddenAwayRecent">
+              {% for r in data.away_recent[3:8] %}
+                <a href="/match/{{ r.fixture_id }}" class="mini-item-link">
+                  <div class="mini-item">
+                    <div class="mini-date">{{ r.date }} <span class="mini-league">— {{ r.league }}</span></div>
+                    <div class="mini-row">
+                      {% set res = "D" if r.winner is none else ("W" if (r.winner == 'home' and r.is_home) or (r.winner == 'away' and not r.is_home) else "L") %}
+                      <div class="mini-result"><span class="form-pill {{ 'win' if res == 'W' else ('draw' if res == 'D' else 'loss') }}">{{ res }}</span></div>
+                      <div class="mini-op"><img src="{{ r.opponent_logo }}" class="inline-logo" alt=""> {{ r.opponent_name }}</div>
+                      <div class="mini-score"><span>{{ r.home_goals }}:{{ r.away_goals }}</span></div>
+                    </div>
+                  </div>
+                </a>
+              {% endfor %}
+            </div>
+            <button class="show-more-recent-btn" id="showMoreAwayBtn" onclick="toggleAwayRecent()">Show More Matches</button>
+          {% endif %}
+        {% else %}
+          <div class="muted">No recent away matches</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="standings-card">
+      <h3 class="section-title blue">Standings — {{ data.league.name }}</h3>
+      {% if data.standings %}
+        <div class="standings-scroll">
+          <table class="standings">
+            <thead>
+              <tr><th>#</th><th>Team</th><th>MP</th><th>W</th><th>D</th><th>L</th><th>G</th><th>PTS</th></tr>
+            </thead>
+            <tbody>
+              {% for s in data.standings %}
+                <tr class="{{ s.zone }} {% if s.highlight %}highlight-team{% endif %}">
+                  <td>{{ s.rank }}</td>
+                  <td class="team-cell">
+                    {% if s.logo %}<img src="{{ s.logo }}" class="small-logo">{% endif %}
+                    <span class="team-name-cell">{{ s.name }}</span>
+                  </td>
+                  <td>{{ s.played }}</td><td>{{ s.win }}</td><td>{{ s.draw }}</td><td>{{ s.loss }}</td>
+                  <td>{{ s.goals_for }}:{{ s.goals_against }}</td><td><strong>{{ s.points }}</strong></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="standings-legend">
+          <div class="legend-item"><span class="legend-color promotion"></span> Promotion</div>
+          <div class="legend-item"><span class="legend-color europe"></span> Europe Qualification</div>
+          <div class="legend-item"><span class="legend-color relegation"></span> Relegation</div>
+          <div class="legend-item"><span class="legend-color highlight-team"></span> Current Match Teams</div>
+        </div>
+      {% else %}
+        <div class="muted">No standings available</div>
+      {% endif %}
+    </div>
+
+    <div class="lineups">
+      <h3 class="section-title blue">Lineups</h3>
+      {% if data.lineups.home or data.lineups.away %}
+        <div class="lineups-grid">
+          <div class="lineup-col">
+            <h4>{{ data.home.name }}</h4>
+            {% if data.lineups.home and data.lineups.home.get('startXI') %}
+              {% for p in data.lineups.home.get('startXI', []) %}
+                <div class="player-line">
+                  <img src="https://media.api-sports.io/football/players/{{ p.get('player', {}).get('id') }}.png" class="player-photo" alt="" onerror="this.onerror=null;this.src='/static/player.png';">
+                  <span>{{ p.get('player', {}).get('name') }} {% if p.get('player', {}).get('number') %} (#{{ p.get('player', {}).get('number') }}){% endif %}</span>
+                </div>
+              {% endfor %}
+            {% else %}<div class="muted">No lineup</div>{% endif %}
+          </div>
+          <div class="lineup-col">
+            <h4>{{ data.away.name }}</h4>
+            {% if data.lineups.away and data.lineups.away.get('startXI') %}
+              {% for p in data.lineups.away.get('startXI', []) %}
+                <div class="player-line">
+                  <img src="https://media.api-sports.io/football/players/{{ p.get('player', {}).get('id') }}.png" class="player-photo" alt="" onerror="this.onerror=null;this.src='/static/player.png';">
+                  <span>{{ p.get('player', {}).get('name') }} {% if p.get('player', {}).get('number') %} (#{{ p.get('player', {}).get('number') }}){% endif %}</span>
+                </div>
+              {% endfor %}
+            {% else %}<div class="muted">No lineup</div>{% endif %}
+          </div>
+        </div>
+      {% else %}
+        <div class="muted">No lineups available</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <script>
+    function toggleH2H() {
+      const hidden = document.getElementById('hiddenH2H');
+      const btn = document.getElementById('showMoreH2HBtn');
+      hidden.classList.toggle('visible');
+      btn.textContent = hidden.classList.contains('visible') ? 'Show Less' : 'Show More H2H';
+    }
+    function toggleHomeRecent() {
+      const hidden = document.getElementById('hiddenHomeRecent');
+      const btn = document.getElementById('showMoreHomeBtn');
+      hidden.classList.toggle('visible');
+      btn.textContent = hidden.classList.contains('visible') ? 'Show Less' : 'Show More Matches';
+    }
+    function toggleAwayRecent() {
+      const hidden = document.getElementById('hiddenAwayRecent');
+      const btn = document.getElementById('showMoreAwayBtn');
+      hidden.classList.toggle('visible');
+      btn.textContent = hidden.classList.contains('visible') ? 'Show Less' : 'Show More Matches';
+    }
+
+    const radarLabels = {{ data.radar.labels|tojson|safe }};
+    const homeRadar = {{ data.radar.home|tojson|safe }};
+    const awayRadar = {{ data.radar.away|tojson|safe }};
+    const homeColor = '#5e17eb';
+    const awayColor = '#cb6ce6';
+
+    const ctx = document.getElementById('radarChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'radar',
+      data: {
+        labels: radarLabels,
+        datasets: [
+          {
+            label: '{{ data.home.name }}', data: homeRadar, fill: true,
+            backgroundColor: 'rgba(94, 23, 235, 0.2)', borderColor: homeColor,
+            pointBackgroundColor: homeColor, pointBorderColor: '#fff',
+            pointHoverBackgroundColor: '#fff', pointHoverBorderColor: homeColor, borderWidth: 2
+          },
+          {
+            label: '{{ data.away.name }}', data: awayRadar, fill: true,
+            backgroundColor: 'rgba(203, 108, 230, 0.2)', borderColor: awayColor,
+            pointBackgroundColor: awayColor, pointBorderColor: '#fff',
+            pointHoverBackgroundColor: '#fff', pointHoverBorderColor: awayColor, borderWidth: 2
+          }
+        ]
+      },
+      options: {
+        maintainAspectRatio: false,
+        scales: {
+          r: {
+            beginAtZero: true, max: 100,
+            ticks: { stepSize: 20, backdropColor: 'transparent', color: '#64748b', font: { size: 11 } },
+            pointLabels: { color: '#1f2937', font: { size: 13, weight: '600' } },
+            grid: { color: 'rgba(148, 163, 184, 0.2)' },
+            angleLines: { color: 'rgba(148, 163, 184, 0.2)' }
+          }
+        },
+        plugins: {
+          legend: { 
+            position: 'top',
+            labels: { color: '#1f2937', font: { size: 13, weight: '600' }, padding: 15, usePointStyle: true, pointStyle: 'circle' }
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>
+

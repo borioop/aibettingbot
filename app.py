@@ -9,6 +9,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
+import queue
 
 # === API KEYS ===
 API_FOOTBALL_KEY = "77e4c25d5460c378f6331d7d33e74482"
@@ -23,54 +24,24 @@ MATCH_WINNER_BET_ID = 1
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = os.environ.get("SECRET_KEY", "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")
 
-# === MASTER CACHE - GOTOWE DANE DO WYŚWIETLENIA ===
-# Struktura: {date_str: {'upcoming': [...], 'finished': [...], 'timestamp': ...}}
-master_cache = {}
+# === PROGRESSIVE CACHE SYSTEM ===
+master_cache = {}  # {date: {'upcoming': [...], 'finished': [...], 'ready': True/False}}
 cache_lock = threading.Lock()
-cache_ready = threading.Event()
+cache_status = {}  # Track cache building progress
 
-# === POMOCNICZE CACHE ===
+# === SUPPORTING CACHES ===
 predictions_cache = {}
 odds_cache = {}
-fixtures_by_date_cache = {}
-CACHE_DURATION = 7200  # 2 godziny
-MASTER_CACHE_UPDATE_INTERVAL = 1800  # 30 minut
+fixtures_raw_cache = {}
+CACHE_DURATION = 7200
 
 # === RATE LIMITING ===
-request_times = defaultdict(list)
+request_times = []
 rate_limit_lock = threading.Lock()
-MAX_REQUESTS_PER_SECOND = 8
-RETRY_DELAY = 2
+MAX_REQUESTS_PER_SECOND = 6
+RETRY_DELAY = 3
 
-executor = ThreadPoolExecutor(max_workers=5)
-
-def wait_for_rate_limit():
-    """Smart rate limiting"""
-    with rate_limit_lock:
-        now = time.time()
-        endpoint = "global"
-        request_times[endpoint] = [t for t in request_times[endpoint] if now - t < 1.0]
-        
-        if len(request_times[endpoint]) >= MAX_REQUESTS_PER_SECOND:
-            sleep_time = 1.0 - (now - request_times[endpoint][0])
-            if sleep_time > 0:
-                time.sleep(sleep_time)
-                now = time.time()
-                request_times[endpoint] = [t for t in request_times[endpoint] if now - t < 1.0]
-        
-        request_times[endpoint].append(now)
-
-def get_cached_data(cache_dict, key, duration):
-    """Universal cache getter"""
-    if key in cache_dict:
-        cached_data, timestamp = cache_dict[key]
-        if datetime.now().timestamp() - timestamp < duration:
-            return cached_data
-    return None
-
-def set_cached_data(cache_dict, key, data):
-    """Universal cache setter"""
-    cache_dict[key] = (data, datetime.now().timestamp())
+executor = ThreadPoolExecutor(max_workers=4)
 
 DOMESTIC_LEAGUES = {
     "England": 39, "Spain": 140, "Germany": 78, "Italy": 135, "France": 61,
@@ -79,6 +50,37 @@ DOMESTIC_LEAGUES = {
     "Russia": 235, "Brazil": 71, "Argentina": 128, "Mexico": 262, "USA": 253,
     "Japan": 98, "China": 169, "Saudi Arabia": 307
 }
+
+def wait_for_rate_limit():
+    """Smart rate limiting with cleanup"""
+    with rate_limit_lock:
+        now = time.time()
+        # Clean old requests
+        while request_times and now - request_times[0] > 1.0:
+            request_times.pop(0)
+        
+        # Wait if at limit
+        if len(request_times) >= MAX_REQUESTS_PER_SECOND:
+            sleep_time = 1.0 - (now - request_times[0])
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+                now = time.time()
+                while request_times and now - request_times[0] > 1.0:
+                    request_times.pop(0)
+        
+        request_times.append(now)
+
+def get_cached_data(cache_dict, key, duration):
+    """Get from cache if fresh"""
+    if key in cache_dict:
+        data, timestamp = cache_dict[key]
+        if time.time() - timestamp < duration:
+            return data
+    return None
+
+def set_cached_data(cache_dict, key, data):
+    """Save to cache"""
+    cache_dict[key] = (data, time.time())
 
 def login_required(f):
     @wraps(f)
@@ -89,7 +91,7 @@ def login_required(f):
     return decorated_function
 
 def api_get(path, params=None, max_retries=3):
-    """Enhanced API call with retry logic"""
+    """API call with retry and rate limiting"""
     for attempt in range(max_retries):
         try:
             wait_for_rate_limit()
@@ -98,42 +100,55 @@ def api_get(path, params=None, max_retries=3):
             if r.status_code == 200:
                 return r.json().get("response", None)
             elif r.status_code == 429:
-                app.logger.warning(f"Rate limit hit on {path}, attempt {attempt + 1}/{max_retries}")
                 if attempt < max_retries - 1:
                     time.sleep(RETRY_DELAY * (attempt + 1))
                     continue
-                else:
-                    return None
             else:
-                app.logger.error(f"API {path} -> status {r.status_code}")
+                app.logger.error(f"API {path} -> {r.status_code}")
                 return None
         except Exception as e:
-            app.logger.exception(f"API get error {path}: {e}")
+            app.logger.error(f"API error {path}: {e}")
             if attempt < max_retries - 1:
                 time.sleep(1)
                 continue
-            return None
     return None
 
 # === API WRAPPERS ===
-def get_fixture(fixture_id): 
-    return api_get("/fixtures", {"id": fixture_id})
-
 def get_fixtures_by_date(date):
-    cache_key = f"raw_fixtures_{date}"
-    cached = get_cached_data(fixtures_by_date_cache, cache_key, 3600)
+    cache_key = f"raw_{date}"
+    cached = get_cached_data(fixtures_raw_cache, cache_key, 3600)
     if cached:
         return cached
     result = api_get("/fixtures", {"date": date})
     if result:
-        set_cached_data(fixtures_by_date_cache, cache_key, result)
+        set_cached_data(fixtures_raw_cache, cache_key, result)
     return result
 
-def get_predictions(fixture_id): 
-    return api_get("/predictions", {"fixture": fixture_id})
+def get_predictions(fixture_id):
+    cache_key = f"pred_{fixture_id}"
+    cached = get_cached_data(predictions_cache, cache_key, CACHE_DURATION)
+    if cached:
+        return cached
+    result = api_get("/predictions", {"fixture": fixture_id})
+    if result:
+        set_cached_data(predictions_cache, cache_key, result)
+    return result
 
-def get_odds(fixture_id): 
+def get_odds(fixture_id):
     return api_get("/odds", {"fixture": fixture_id})
+
+def get_odds_by_bet(fixture_id, bet_id):
+    cache_key = f"odds_{fixture_id}_{bet_id}"
+    cached = get_cached_data(odds_cache, cache_key, CACHE_DURATION)
+    if cached:
+        return cached
+    result = api_get("/odds", {"fixture": fixture_id, "bet": bet_id})
+    if result:
+        set_cached_data(odds_cache, cache_key, result)
+    return result
+
+def get_fixture(fixture_id): 
+    return api_get("/fixtures", {"id": fixture_id})
 
 def get_h2h(home_id, away_id): 
     return api_get("/fixtures/headtohead", {"h2h": f"{home_id}-{away_id}"})
@@ -158,143 +173,114 @@ def get_team_fixtures(team_id, season):
 
 # === ODDS CALCULATION ===
 def get_advice_odd(fixture, advice):
-    """Get odds for given advice"""
+    """Calculate odds for advice"""
     if not advice or not isinstance(advice, str):
         return None
 
     fixture_id = fixture.get("fixture", {}).get("id")
-    home_team_name = fixture.get("teams", {}).get("home", {}).get("name", "").strip()
-    away_team_name = fixture.get("teams", {}).get("away", {}).get("name", "").strip()
+    home_name = fixture.get("teams", {}).get("home", {}).get("name", "").strip()
+    away_name = fixture.get("teams", {}).get("away", {}).get("name", "").strip()
     advice_lower = advice.lower()
 
     # Combo Bet
     if "combo double chance" in advice_lower:
         m = re.search(r'combo double chance\s*:\s*(.+?)\s+and\s+([+-]\d+(\.\d+)?)\s*goals', advice_lower)
-        if not m: 
+        if not m:
             return None
 
         dc_part = m.group(1).strip()
         goal_value = m.group(2).strip()
-        dc_option_search = None
-
-        if home_team_name.lower() in dc_part and 'draw' in dc_part:
-            dc_option_search = "home/draw"
-        elif away_team_name.lower() in dc_part and 'draw' in dc_part:
-            dc_option_search = "draw/away"
-        elif home_team_name.lower() in dc_part and away_team_name.lower() in dc_part:
-            dc_option_search = "home/away"
+        
+        # Determine double chance option
+        dc_option = None
+        if home_name.lower() in dc_part and 'draw' in dc_part:
+            dc_option = "home/draw"
+        elif away_name.lower() in dc_part and 'draw' in dc_part:
+            dc_option = "draw/away"
+        elif home_name.lower() in dc_part and away_name.lower() in dc_part:
+            dc_option = "home/away"
         else:
             return None
 
-        gu_option_search = ""
+        # Determine goals option
         if goal_value.startswith('-'):
-            gu_option_search = "under " + goal_value.lstrip('-')
+            goal_option = "under " + goal_value.lstrip('-')
         elif goal_value.startswith('+'):
-            gu_option_search = "over " + goal_value.lstrip('+')
+            goal_option = "over " + goal_value.lstrip('+')
         else:
             return None
 
-        # Double Chance Odds
-        odds_dc_val = None
-        cache_key_dc = f"odds_{fixture_id}_{DOUBLE_CHANCE_BET_ID}"
-        cached_dc = get_cached_data(odds_cache, cache_key_dc, CACHE_DURATION)
-
-        if cached_dc:
-            odds_dc_raw = cached_dc
-        else:
-            odds_dc_raw = api_get("/odds", {"fixture": fixture_id, "bet": DOUBLE_CHANCE_BET_ID})
-            if odds_dc_raw:
-                set_cached_data(odds_cache, cache_key_dc, odds_dc_raw)
-
-        if odds_dc_raw:
-            for market in odds_dc_raw:
+        # Get Double Chance odds
+        dc_odds_raw = get_odds_by_bet(fixture_id, DOUBLE_CHANCE_BET_ID)
+        dc_odd = None
+        if dc_odds_raw:
+            for market in dc_odds_raw:
                 for bookmaker in market.get("bookmakers", []):
                     for bet in bookmaker.get("bets", []):
                         if bet.get("id") == DOUBLE_CHANCE_BET_ID:
-                            for option in bet.get("values", []):
-                                if option.get("value", "").strip().lower() == dc_option_search:
-                                    odds_dc_val = float(option.get("odd"))
+                            for opt in bet.get("values", []):
+                                if opt.get("value", "").strip().lower() == dc_option:
+                                    dc_odd = float(opt.get("odd"))
                                     break
-                            if odds_dc_val: break
-                    if odds_dc_val: break
-                if odds_dc_val: break
+                        if dc_odd: break
+                if dc_odd: break
 
-        # Goals Odds
-        odds_gu_val = None
-        cache_key_gu = f"odds_{fixture_id}_{GOALS_BET_ID}"
-        cached_gu = get_cached_data(odds_cache, cache_key_gu, CACHE_DURATION)
-
-        if cached_gu:
-            odds_gu_raw = cached_gu
-        else:
-            odds_gu_raw = api_get("/odds", {"fixture": fixture_id, "bet": GOALS_BET_ID})
-            if odds_gu_raw:
-                set_cached_data(odds_cache, cache_key_gu, odds_gu_raw)
-
-        if odds_gu_raw:
-            for market in odds_gu_raw:
+        # Get Goals odds
+        goals_odds_raw = get_odds_by_bet(fixture_id, GOALS_BET_ID)
+        goals_odd = None
+        if goals_odds_raw:
+            for market in goals_odds_raw:
                 for bookmaker in market.get("bookmakers", []):
                     for bet in bookmaker.get("bets", []):
                         if bet.get("id") == GOALS_BET_ID:
-                            for option in bet.get("values", []):
-                                if gu_option_search in option.get("value", "").strip().lower():
-                                    odds_gu_val = float(option.get("odd"))
+                            for opt in bet.get("values", []):
+                                if goal_option in opt.get("value", "").strip().lower():
+                                    goals_odd = float(opt.get("odd"))
                                     break
-                            if odds_gu_val: break
-                    if odds_gu_val: break
-                if odds_gu_val: break
+                        if goals_odd: break
+                if goals_odd: break
 
-        if odds_dc_val and odds_gu_val:
-            return odds_dc_val * odds_gu_val
+        if dc_odd and goals_odd:
+            return dc_odd * goals_odd
         return None
 
     # Simple Bets
-    desired_bet_id = None
-    desired_option = ""
+    bet_id = None
+    option = ""
 
     if "double chance" in advice_lower:
-        desired_bet_id = DOUBLE_CHANCE_BET_ID
-        if home_team_name.lower() in advice_lower and "draw" in advice_lower:
-            desired_option = "home/draw"
-        elif away_team_name.lower() in advice_lower and "draw" in advice_lower:
-            desired_option = "draw/away"
-        elif home_team_name.lower() in advice_lower and away_team_name.lower() in advice_lower:
-            desired_option = "home/away"
+        bet_id = DOUBLE_CHANCE_BET_ID
+        if home_name.lower() in advice_lower and "draw" in advice_lower:
+            option = "home/draw"
+        elif away_name.lower() in advice_lower and "draw" in advice_lower:
+            option = "draw/away"
+        elif home_name.lower() in advice_lower and away_name.lower() in advice_lower:
+            option = "home/away"
 
     elif "winner" in advice_lower:
-        desired_bet_id = MATCH_WINNER_BET_ID
-        if home_team_name.lower() in advice_lower:
-            desired_option = "home"
-        elif away_team_name.lower() in advice_lower:
-            desired_option = "away"
+        bet_id = MATCH_WINNER_BET_ID
+        if home_name.lower() in advice_lower:
+            option = "home"
+        elif away_name.lower() in advice_lower:
+            option = "away"
 
-    if desired_bet_id and desired_option:
-        cache_key = f"odds_{fixture_id}_{desired_bet_id}"
-        cached_odds = get_cached_data(odds_cache, cache_key, CACHE_DURATION)
-
-        if cached_odds:
-            odds_raw = cached_odds
-        else:
-            odds_raw = api_get("/odds", {"fixture": fixture_id, "bet": desired_bet_id})
-            if odds_raw:
-                set_cached_data(odds_cache, cache_key, odds_raw)
-
+    if bet_id and option:
+        odds_raw = get_odds_by_bet(fixture_id, bet_id)
         if odds_raw:
             for market in odds_raw:
                 for bookmaker in market.get("bookmakers", []):
                     for bet in bookmaker.get("bets", []):
-                        if bet.get("id") == desired_bet_id:
-                            for option in bet.get("values", []):
-                                if option.get("value", "").strip().lower() == desired_option:
+                        if bet.get("id") == bet_id:
+                            for opt in bet.get("values", []):
+                                if opt.get("value", "").strip().lower() == option:
                                     try:
-                                        return float(option.get("odd"))
-                                    except (ValueError, TypeError):
+                                        return float(opt.get("odd"))
+                                    except:
                                         return None
     return None
 
-# === CHECK PREDICTION RESULT ===
 def check_prediction_result(fixture, advice):
-    """Check if prediction won based on final score"""
+    """Check if prediction won"""
     if not advice:
         return None
         
@@ -305,227 +291,203 @@ def check_prediction_result(fixture, advice):
     if home_goals is None or away_goals is None:
         return None
     
-    home_team_name = fixture.get("teams", {}).get("home", {}).get("name", "").strip().lower()
-    away_team_name = fixture.get("teams", {}).get("away", {}).get("name", "").strip().lower()
+    home_name = fixture.get("teams", {}).get("home", {}).get("name", "").strip().lower()
+    away_name = fixture.get("teams", {}).get("away", {}).get("name", "").strip().lower()
     advice_lower = advice.lower()
     
     if home_goals > away_goals:
-        actual_result = "home"
+        actual = "home"
     elif away_goals > home_goals:
-        actual_result = "away"
+        actual = "away"
     else:
-        actual_result = "draw"
+        actual = "draw"
     
-    # Winner predictions
+    # Winner
     if "winner" in advice_lower:
-        if home_team_name in advice_lower:
-            return actual_result == "home"
-        elif away_team_name in advice_lower:
-            return actual_result == "away"
+        if home_name in advice_lower:
+            return actual == "home"
+        elif away_name in advice_lower:
+            return actual == "away"
     
-    # Double Chance predictions
+    # Double Chance
     if "double chance" in advice_lower:
-        if home_team_name in advice_lower and "draw" in advice_lower:
-            return actual_result in ["home", "draw"]
-        elif away_team_name in advice_lower and "draw" in advice_lower:
-            return actual_result in ["away", "draw"]
-        elif home_team_name in advice_lower and away_team_name in advice_lower:
-            return actual_result in ["home", "away"]
+        if home_name in advice_lower and "draw" in advice_lower:
+            return actual in ["home", "draw"]
+        elif away_name in advice_lower and "draw" in advice_lower:
+            return actual in ["away", "draw"]
+        elif home_name in advice_lower and away_name in advice_lower:
+            return actual in ["home", "away"]
     
-    # Combo bets
+    # Combo
     if "combo" in advice_lower:
-        dc_correct = False
-        if home_team_name in advice_lower and "draw" in advice_lower:
-            dc_correct = actual_result in ["home", "draw"]
-        elif away_team_name in advice_lower and "draw" in advice_lower:
-            dc_correct = actual_result in ["away", "draw"]
-        elif home_team_name in advice_lower and away_team_name in advice_lower:
-            dc_correct = actual_result in ["home", "away"]
+        dc_ok = False
+        if home_name in advice_lower and "draw" in advice_lower:
+            dc_ok = actual in ["home", "draw"]
+        elif away_name in advice_lower and "draw" in advice_lower:
+            dc_ok = actual in ["away", "draw"]
+        elif home_name in advice_lower and away_name in advice_lower:
+            dc_ok = actual in ["home", "away"]
         
         goals_match = re.search(r'([+-]\d+(\.\d+)?)\s*goals', advice_lower)
-        goals_correct = False
+        goals_ok = False
         
         if goals_match:
             goal_value = goals_match.group(1)
-            total_goals = home_goals + away_goals
+            total = home_goals + away_goals
             
             if goal_value.startswith('-'):
                 threshold = float(goal_value.lstrip('-'))
-                goals_correct = total_goals < threshold
+                goals_ok = total < threshold
             elif goal_value.startswith('+'):
                 threshold = float(goal_value.lstrip('+'))
-                goals_correct = total_goals > threshold
+                goals_ok = total > threshold
         
-        return dc_correct and goals_correct
+        return dc_ok and goals_ok
     
     return None
 
-# === PROCESS SINGLE FIXTURE - COMPLETE DATA ===
-def process_fixture_complete(fixture):
-    """Process ONE fixture completely: prediction + odds + result (if finished)"""
+# === PROCESS SINGLE FIXTURE ===
+def process_fixture(fixture):
+    """Process one fixture - get prediction and odds"""
     try:
         fixture_id = fixture.get("fixture", {}).get("id")
         if not fixture_id:
             return None
 
         status = fixture.get("fixture", {}).get("status", {}).get("short", "")
-        is_finished = status in ["FT", "AET", "PEN"]
-
+        
         # Get prediction
-        cache_key = f"pred_{fixture_id}"
-        cached_pred = get_cached_data(predictions_cache, cache_key, CACHE_DURATION * (10 if is_finished else 1))
+        pred_raw = get_predictions(fixture_id)
+        if not pred_raw:
+            return None
 
-        if cached_pred:
-            pred_raw = cached_pred
-        else:
-            pred_raw = api_get("/predictions", {"fixture": fixture_id})
-            if pred_raw:
-                set_cached_data(predictions_cache, cache_key, pred_raw)
-            else:
-                return None
-
-        # Extract advice
         advice = None
         if isinstance(pred_raw, list) and len(pred_raw) > 0:
-            p = pred_raw[0].get("predictions", {})
-            advice = p.get("advice")
+            advice = pred_raw[0].get("predictions", {}).get("advice")
 
         if not advice or advice == "—":
             return None
 
         # Get odds
         advice_odd = get_advice_odd(fixture, advice)
-        if advice_odd is None:
+        if not advice_odd:
             return None
 
         # Add data to fixture
         fixture["advice"] = advice
         fixture["advice_odd"] = advice_odd
 
-        # If finished, check result
-        if is_finished:
-            prediction_won = check_prediction_result(fixture, advice)
-            fixture["prediction_won"] = prediction_won
+        # Check result if finished
+        if status in ["FT", "AET", "PEN"]:
+            fixture["prediction_won"] = check_prediction_result(fixture, advice)
         else:
             fixture["prediction_won"] = None
 
         return fixture
 
     except Exception as e:
-        app.logger.error(f"Error processing fixture {fixture.get('fixture', {}).get('id')}: {e}")
+        app.logger.error(f"Error processing {fixture_id}: {e}")
         return None
 
 # === BACKGROUND CACHE BUILDER ===
-def build_complete_cache_for_date(date_str):
-    """Build COMPLETE cache for given date - upcoming AND finished matches"""
-    app.logger.info(f"🔨 Building complete cache for {date_str}...")
-    
-    # Get all fixtures
-    all_fixtures = get_fixtures_by_date(date_str)
-    if not all_fixtures:
-        app.logger.warning(f"No fixtures found for {date_str}")
-        return {'upcoming': [], 'finished': []}
+def build_cache_for_date(date_str):
+    """Build cache for one date"""
+    try:
+        app.logger.info(f"🔨 Building cache: {date_str}")
+        
+        # Update status
+        with cache_lock:
+            cache_status[date_str] = {'status': 'building', 'progress': 0, 'total': 0}
 
-    total = len(all_fixtures)
-    app.logger.info(f"📊 Processing {total} fixtures for {date_str}...")
+        # Get all fixtures
+        all_fixtures = get_fixtures_by_date(date_str)
+        if not all_fixtures:
+            with cache_lock:
+                cache_status[date_str] = {'status': 'empty', 'progress': 0, 'total': 0}
+                master_cache[date_str] = {'upcoming': [], 'finished': [], 'ready': True}
+            return
 
-    # Process in parallel
-    futures = {executor.submit(process_fixture_complete, fixture): fixture for fixture in all_fixtures}
+        total = len(all_fixtures)
+        with cache_lock:
+            cache_status[date_str]['total'] = total
 
-    upcoming_matches = []
-    finished_matches = []
-    processed = 0
+        app.logger.info(f"📊 Processing {total} fixtures for {date_str}")
 
-    for future in as_completed(futures):
-        processed += 1
-        if processed % max(1, total // 10) == 0:
-            app.logger.info(f"  ⏳ Progress {date_str}: {processed}/{total} ({int(processed/total*100)}%)")
+        # Process in parallel
+        futures = {executor.submit(process_fixture, f): f for f in all_fixtures}
+        
+        upcoming = []
+        finished = []
+        processed = 0
 
-        result = future.result()
-        if result:
-            status = result.get("fixture", {}).get("status", {}).get("short", "")
+        for future in as_completed(futures):
+            processed += 1
             
-            if status in ["FT", "AET", "PEN"]:
-                finished_matches.append(result)
-            else:
-                upcoming_matches.append(result)
+            # Update progress
+            with cache_lock:
+                cache_status[date_str]['progress'] = processed
 
-    app.logger.info(f"✅ Cache built for {date_str}: {len(upcoming_matches)} upcoming, {len(finished_matches)} finished")
-    
-    return {
-        'upcoming': upcoming_matches,
-        'finished': finished_matches,
-        'timestamp': datetime.now().timestamp()
-    }
+            if processed % max(1, total // 5) == 0:
+                app.logger.info(f"  ⏳ {date_str}: {processed}/{total} ({int(processed/total*100)}%)")
 
-# === BACKGROUND WORKER ===
-def master_cache_updater():
-    """Main background worker - updates cache for all dates"""
+            result = future.result()
+            if result:
+                status = result.get("fixture", {}).get("status", {}).get("short", "")
+                if status in ["FT", "AET", "PEN"]:
+                    finished.append(result)
+                else:
+                    upcoming.append(result)
+
+        # Save to cache
+        with cache_lock:
+            master_cache[date_str] = {
+                'upcoming': upcoming,
+                'finished': finished,
+                'ready': True,
+                'timestamp': time.time()
+            }
+            cache_status[date_str] = {
+                'status': 'ready',
+                'progress': processed,
+                'total': total,
+                'upcoming_count': len(upcoming),
+                'finished_count': len(finished)
+            }
+
+        app.logger.info(f"✅ {date_str}: {len(upcoming)} upcoming, {len(finished)} finished")
+
+    except Exception as e:
+        app.logger.error(f"Error building cache for {date_str}: {e}")
+        with cache_lock:
+            cache_status[date_str] = {'status': 'error', 'error': str(e)}
+
+def cache_builder_worker():
+    """Background worker - builds cache progressively"""
     while True:
         try:
-            app.logger.info("=" * 80)
-            app.logger.info("🔄 MASTER CACHE UPDATE STARTED")
-            app.logger.info("=" * 80)
+            # Dates to cache
+            dates = []
+            for offset in range(-2, 3):  # -2, -1, 0, 1, 2
+                date = datetime.now() + timedelta(days=offset)
+                dates.append(date.strftime('%Y-%m-%d'))
 
-            # Dates to cache: -2 (history), -1, 0 (today), +1, +2
-            dates_to_process = []
-            for day_offset in range(-2, 3):
-                date = datetime.now() + timedelta(days=day_offset)
-                date_str = date.strftime('%Y-%m-%d')
-                dates_to_process.append((date_str, day_offset))
+            for date_str in dates:
+                app.logger.info(f"📅 Updating cache: {date_str}")
+                build_cache_for_date(date_str)
+                time.sleep(3)  # Small delay between dates
 
-            # Process each date
-            for date_str, day_offset in dates_to_process:
-                app.logger.info(f"📅 Processing {date_str} (day {day_offset:+d})...")
-                
-                cache_data = build_complete_cache_for_date(date_str)
-                
-                with cache_lock:
-                    master_cache[date_str] = cache_data
-
-                app.logger.info(f"💾 Saved to master cache: {date_str}")
-                time.sleep(2)  # Small delay between dates
-
-            app.logger.info("=" * 80)
-            app.logger.info(f"✅ MASTER CACHE UPDATE COMPLETED")
-            app.logger.info(f"💤 Sleeping for {MASTER_CACHE_UPDATE_INTERVAL} seconds...")
-            app.logger.info("=" * 80)
-            
-            cache_ready.set()
-            time.sleep(MASTER_CACHE_UPDATE_INTERVAL)
+            app.logger.info("✅ Cache cycle completed. Sleeping 30 minutes...")
+            time.sleep(1800)  # 30 minutes
 
         except Exception as e:
-            app.logger.exception(f"❌ Error in master cache updater: {e}")
+            app.logger.error(f"Cache builder error: {e}")
             time.sleep(300)  # 5 min on error
 
-def initial_cache_build():
-    """Initial cache build on startup"""
-    app.logger.info("🚀 INITIAL CACHE BUILD STARTING...")
-    
-    dates = []
-    for day_offset in range(-2, 3):
-        date = datetime.now() + timedelta(days=day_offset)
-        date_str = date.strftime('%Y-%m-%d')
-        dates.append(date_str)
-
-    for date_str in dates:
-        app.logger.info(f"📅 Initial build for {date_str}...")
-        cache_data = build_complete_cache_for_date(date_str)
-        
-        with cache_lock:
-            master_cache[date_str] = cache_data
-        
-        app.logger.info(f"💾 Initial cache saved: {date_str}")
-        time.sleep(2)
-
-    app.logger.info("✅ INITIAL CACHE BUILD COMPLETED!")
-    cache_ready.set()
-
-def start_master_cache_updater():
-    """Start background cache updater"""
-    thread = threading.Thread(target=master_cache_updater, daemon=True)
+def start_cache_builder():
+    """Start background cache builder"""
+    thread = threading.Thread(target=cache_builder_worker, daemon=True)
     thread.start()
-    app.logger.info("🔄 Master cache updater started")
+    app.logger.info("🔄 Cache builder started")
 
 # === HELPER FUNCTIONS ===
 def clamp(v):
@@ -595,7 +557,7 @@ def calculate_form_from_matches(team_id, league_id, season, limit=5, current_fix
         return ["?"] * 6
 
 def prepare_comparison_single(fixture_raw):
-    """Prepare detailed match data"""
+    """Prepare match details"""
     fixture = fixture_raw.get("fixture", {})
     league = fixture_raw.get("league", {})
     teams = fixture_raw.get("teams", {})
@@ -630,12 +592,7 @@ def prepare_comparison_single(fixture_raw):
     venue_city = fixture.get("venue", {}).get("city") or None
     venue_display = f"{venue_name} ({venue_city})" if venue_name and venue_city else venue_name or venue_city
 
-    cache_key = f"pred_{fixture_id}"
-    pred_raw = get_cached_data(predictions_cache, cache_key, CACHE_DURATION)
-    if not pred_raw:
-        pred_raw = api_get("/predictions", {"fixture": fixture_id})
-        if pred_raw:
-            set_cached_data(predictions_cache, cache_key, pred_raw)
+    pred_raw = get_predictions(fixture_id)
 
     advice = "—"
     percent = {}
@@ -985,52 +942,43 @@ def api_match_json(fixture_id):
     data = prepare_comparison_single(fixture_raw)
     return jsonify(data)
 
-# === INSTANT API ENDPOINTS - READ FROM MASTER CACHE ===
 @app.route("/api/fixtures")
 def api_fixtures():
-    """Get UPCOMING fixtures - INSTANT from cache - NO API CALLS"""
+    """Get upcoming fixtures - INSTANT from cache"""
     date = request.args.get('date')
     if not date:
         date = datetime.now().strftime('%Y-%m-%d')
 
-    app.logger.info(f"📥 API request for upcoming matches: {date}")
+    app.logger.info(f"📥 Request: upcoming {date}")
 
-    # Read from master cache
     with cache_lock:
-        if date in master_cache:
-            cache_data = master_cache[date]
-            upcoming = cache_data.get('upcoming', [])
-            age = datetime.now().timestamp() - cache_data['timestamp']
-            app.logger.info(f"✅ Returning {len(upcoming)} upcoming matches from cache (age: {int(age/60)} min)")
-            return jsonify({"fixtures": upcoming})
+        if date in master_cache and master_cache[date].get('ready'):
+            fixtures = master_cache[date].get('upcoming', [])
+            app.logger.info(f"✅ Cache HIT: {len(fixtures)} upcoming")
+            return jsonify({"fixtures": fixtures})
 
-    # Fallback if cache not ready
-    app.logger.warning(f"⚠️ Cache miss for {date} - returning empty")
-    return jsonify({"fixtures": []})
-
+    # Cache not ready - return partial or empty
+    app.logger.warning(f"⚠️ Cache MISS: {date}")
+    return jsonify({"fixtures": [], "building": True})
 
 @app.route("/api/fixtures/finished")
 def api_fixtures_finished():
-    """Get FINISHED fixtures - INSTANT from cache - NO API CALLS"""
+    """Get finished fixtures - INSTANT from cache"""
     date = request.args.get('date')
     if not date:
         date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
 
-    app.logger.info(f"📥 API request for finished matches: {date}")
+    app.logger.info(f"📥 Request: finished {date}")
 
-    # Read from master cache
     with cache_lock:
-        if date in master_cache:
-            cache_data = master_cache[date]
-            finished = cache_data.get('finished', [])
-            age = datetime.now().timestamp() - cache_data['timestamp']
-            app.logger.info(f"✅ Returning {len(finished)} finished matches from cache (age: {int(age/60)} min)")
-            return jsonify({"fixtures": finished})
+        if date in master_cache and master_cache[date].get('ready'):
+            fixtures = master_cache[date].get('finished', [])
+            app.logger.info(f"✅ Cache HIT: {len(fixtures)} finished")
+            return jsonify({"fixtures": fixtures})
 
-    # Fallback if cache not ready
-    app.logger.warning(f"⚠️ Cache miss for {date} - returning empty")
-    return jsonify({"fixtures": []})
-
+    # Cache not ready
+    app.logger.warning(f"⚠️ Cache MISS: {date}")
+    return jsonify({"fixtures": [], "building": True})
 
 @app.route("/api/team/<int:team_id>/standings")
 def api_team_standings(team_id):
@@ -1081,48 +1029,44 @@ def api_team_standings(team_id):
     return jsonify(result)
 
 @app.route("/api/cache/status")
-def cache_status():
-    """Cache status endpoint for debugging"""
+def cache_status_endpoint():
+    """Cache status - for debugging"""
     with cache_lock:
         status = {}
-        for date_str, cache_data in master_cache.items():
-            age_seconds = datetime.now().timestamp() - cache_data['timestamp']
+        for date_str, data in master_cache.items():
             status[date_str] = {
-                'upcoming_count': len(cache_data.get('upcoming', [])),
-                'finished_count': len(cache_data.get('finished', [])),
-                'age_minutes': int(age_seconds / 60),
-                'timestamp': datetime.fromtimestamp(cache_data['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+                'ready': data.get('ready', False),
+                'upcoming_count': len(data.get('upcoming', [])),
+                'finished_count': len(data.get('finished', [])),
+                'timestamp': datetime.fromtimestamp(data.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M:%S') if data.get('timestamp') else 'N/A'
             }
+        
+        progress = {}
+        for date_str, info in cache_status.items():
+            progress[date_str] = info
 
     return jsonify({
-        'cache_ready': cache_ready.is_set(),
-        'master_cache_entries': status,
+        'cache': status,
+        'progress': progress,
         'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'predictions_cache_size': len(predictions_cache),
-        'odds_cache_size': len(odds_cache),
-        'raw_fixtures_cache_size': len(fixtures_by_date_cache),
-        'update_interval_seconds': MASTER_CACHE_UPDATE_INTERVAL
+        'odds_cache_size': len(odds_cache)
     })
 
 # === STARTUP ===
 if __name__ == "__main__":
     app.logger.info("=" * 80)
-    app.logger.info("🚀 FOOTBALL APP WITH COMPLETE BACKGROUND CACHE SYSTEM")
+    app.logger.info("🚀 FOOTBALL APP - FAST START MODE")
     app.logger.info("=" * 80)
-
-    # Initial cache build
-    app.logger.info("⏳ Building initial master cache...")
-    initial_cache_build()
-    app.logger.info("✅ Initial master cache ready!")
-
-    # Start background updater
-    start_master_cache_updater()
-
+    
+    # Start cache builder in background IMMEDIATELY
+    app.logger.info("🔄 Starting background cache builder...")
+    start_cache_builder()
+    
     app.logger.info("=" * 80)
-    app.logger.info("🎉 SERVER READY")
-    app.logger.info(f"📊 Master cache updates every {MASTER_CACHE_UPDATE_INTERVAL/60} minutes")
-    app.logger.info("💡 Visit /api/cache/status to check cache")
-    app.logger.info("⚡ API endpoints read ONLY from cache - zero API calls on user request")
+    app.logger.info("✅ SERVER READY - Cache building in background")
+    app.logger.info("💡 Visit /api/cache/status to check progress")
+    app.logger.info("⚡ Users get data as soon as it's ready")
     app.logger.info("=" * 80)
 
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
